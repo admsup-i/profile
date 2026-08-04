@@ -50,38 +50,24 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/ci-cd-demo:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/ci-cd-demo:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/profile:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/profile:${{ github.sha }}
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Copy manifests to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: "k8s/*"
-          target: "/home/${{ secrets.EC2_USERNAME }}/ci-cd-demo"
-
-      - name: Deploy to Kubernetes
+      - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/ci-cd-demo
-            SHA=${{ github.sha }}
-            DIR=/home/${{ secrets.EC2_USERNAME }}/ci-cd-demo/k8s
-
-            sed -i "s|image: .*|image: $IMAGE:$SHA|" $DIR/deployment.yaml
-
-            kubectl apply -f $DIR/deployment.yaml
-            kubectl apply -f $DIR/service.yaml
-
-            kubectl rollout status deployment/ci-cd-demo --timeout=120s
+            sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/profile:latest
+            sudo docker stop profile || true
+            sudo docker rm profile || true
+            sudo docker run -d \
+              --name profile-app \
+              --restart unless-stopped \
+              -p 8082:8082 \
+              ${{ secrets.DOCKERHUB_USERNAME }}/profile:latest
