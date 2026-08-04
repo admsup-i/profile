@@ -56,18 +56,32 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to EC2
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy manifests to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "k8s/*"
+          target: "/home/${{ secrets.EC2_USERNAME }}/profile"
+
+      - name: Deploy to Kubernetes
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/profile:latest
-            sudo docker stop profile || true
-            sudo docker rm profile || true
-            sudo docker run -d \
-              --name profile-app \
-              --restart unless-stopped \
-              -p 8082:8082 \
-              ${{ secrets.DOCKERHUB_USERNAME }}/profile:latest
+            IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/profile
+            SHA=${{ github.sha }}
+            DIR=/home/${{ secrets.EC2_USERNAME }}/profile/k8s
+
+            sed -i "s|image: .*|image: $IMAGE:$SHA|" $DIR/deployment.yaml
+
+            kubectl apply -f $DIR/deployment.yaml
+            kubectl apply -f $DIR/service.yaml
+
+            kubectl rollout status deployment/profile --timeout=120s
