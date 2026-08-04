@@ -83,5 +83,7 @@ jobs:
 
             kubectl apply -f $DIR/deployment.yaml
             kubectl apply -f $DIR/service.yaml
-
+            kubectl annotate deployment/profile \
+              kubernetes.io/change-cause="GitHub Actions run #${{ github.run_number }} | commit ${{ github.sha }} | by ${{ github.actor }}" \
+              --overwrite
             kubectl rollout status deployment/profile --timeout=120s
