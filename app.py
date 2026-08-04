@@ -13,7 +13,7 @@ PROFILE = {
     "phone": "+91 8125957278",
     "linkedin": "https://linkedin.com/in/iliyas-siddiqui-4a8b20ab",
     "summary": (
-        "Site Reliability & Production Support engineer with 13+ years driving uptime, "
+        "Site Reliability & Production Support engineer with 13 years driving uptime, "
         "incident response, and release reliability for enterprise and cloud SaaS platforms. "
         "Experienced leading a 9-engineer support POD against SLO/error-budget targets, with "
         "hands-on depth in Kubernetes/Docker, CI/CD pipelines, Python automation, and "
