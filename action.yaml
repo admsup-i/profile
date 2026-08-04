@@ -67,7 +67,7 @@ jobs:
             sudo docker stop profile || true
             sudo docker rm profile || true
             sudo docker run -d \
-              --name profile-app \
+              --name profile \
               --restart unless-stopped \
               -p 8082:8082 \
               ${{ secrets.DOCKERHUB_USERNAME }}/profile:latest
