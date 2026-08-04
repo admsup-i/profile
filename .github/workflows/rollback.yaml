@@ -22,9 +22,9 @@ jobs:
             REV="${{ github.event.inputs.revision }}"
 
             if [ -z "$REV" ]; then
-              kubectl rollout undo deployment/ci-cd-demo
+              kubectl rollout undo deployment/profile
             else
-              kubectl rollout undo deployment/ci-cd-demo --to-revision=$REV
+              kubectl rollout undo deployment/profile --to-revision=$REV
             fi
 
-            kubectl rollout status deployment/ci-cd-demo --timeout=120s
+            kubectl rollout status deployment/profile --timeout=120s
