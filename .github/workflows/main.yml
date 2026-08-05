@@ -147,6 +147,7 @@ jobs:
             --format='{{index .RepoDigests 0}}' \
             "${IMAGE_NAME}:${GITHUB_SHA}" | cut -d@ -f2)
 
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
           echo "image_ref=${IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Install Cosign
@@ -171,11 +172,13 @@ jobs:
           image-ref: ${{ steps.image-digest.outputs.image_ref }}
           format: cyclonedx
           output: sbom.cdx.json
-
-      - name: Attest SBOM artifact
-        uses: actions/attest@v2
+      - name: Attach signed SBOM to the image
+        uses: actions/attest@v4
         with:
-          subject-path: sbom.cdx.json
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.image-digest.outputs.digest }}
+          sbom-path: sbom.cdx.json
+          push-to-registry: true    
 
   deploy:
     name: Verify and deploy to Kubernetes
@@ -187,6 +190,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      attestations: write
+      artifact-metadata: write
 
     steps:
       - name: Checkout code
