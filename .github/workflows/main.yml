@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  IMAGE_NAME: doker.io/${{ secrets.DOCKERHUB_USERNAME }}/profile
+  IMAGE_NAME: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/profile
 
 jobs:
   test:
