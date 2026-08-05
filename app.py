@@ -6,7 +6,7 @@ app = Flask(__name__)
 APP_VERSION = "1.0.0"
 
 PROFILE = {
-    "name": "Iliyas Fayyaz A. Siddiqui",
+    "name": "Iliyas Fayyaz  Siddiqui",
     "title": "Site Reliability Engineer | Production Support & Cloud Reliability",
     "location": "Hyderabad, India",
     "email": "siddiqui.i1988@gmail.com",
