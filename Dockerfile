@@ -8,5 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 EXPOSE 8082
+RUN addgroup --system app && adduser --system --ingroup app app
 
+USER app
 CMD ["python", "-m", "gunicorn", "-b", "0.0.0.0:8082", "app:app"]
