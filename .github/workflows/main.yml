@@ -111,11 +111,11 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: docker.io
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          uses: docker/setup-busername: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-bu/ildx-action@v3
+        uses: docker/setup-buildx-action@v3
 
       - name: Build image locally
         uses: docker/build-push-action@v6
