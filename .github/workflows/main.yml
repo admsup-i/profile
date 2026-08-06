@@ -102,10 +102,19 @@ jobs:
 
     outputs:
       image_ref: ${{ steps.image-digest.outputs.image_ref }}
+      digest: ${{ steps.image-digest.outputs.digest }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Fail fast if DockerHub secrets are missing
+        run: |
+          set -euo pipefail
+          if [[ -z "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+            echo "::error::DOCKERHUB_USERNAME secret is empty or not set for the 'production' environment."
+            exit 1
+          fi
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -134,32 +143,51 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
 
+      # Push via build-push-action instead of `docker push` so the digest
+      # comes back as a trustworthy step output (steps.push.outputs.digest)
+      # rather than being re-parsed from `docker inspect` text, which was
+      # producing an empty/invalid value and breaking `cosign verify`.
       - name: Push approved image
-        run: |
-          docker push "${IMAGE_NAME}:${GITHUB_SHA}"
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
 
-          docker tag "${IMAGE_NAME}:${GITHUB_SHA}" "${IMAGE_NAME}:latest"
-          docker push "${IMAGE_NAME}:latest"
-
-      - name: Get immutable image digest
+      - name: Resolve and validate immutable image digest
         id: image-digest
         run: |
-          DIGEST=$(docker inspect \
-            --format='{{index .RepoDigests 0}}' \
-            "${IMAGE_NAME}:${GITHUB_SHA}" | cut -d@ -f2)
+          set -euo pipefail
+
+          DIGEST="${{ steps.push.outputs.digest }}"
+
+          if [[ -z "${DIGEST}" || "${DIGEST}" != sha256:* ]]; then
+            echo "::error::Failed to resolve a valid image digest from the push step. Got: '${DIGEST}'"
+            exit 1
+          fi
+
+          IMAGE_REF="${IMAGE_NAME}@${DIGEST}"
 
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
-          echo "image_ref=${IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
+
+          echo "Resolved image_ref=${IMAGE_REF}"
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
       - name: Sign image using GitHub identity
         run: |
+          set -euo pipefail
           cosign sign --yes "${{ steps.image-digest.outputs.image_ref }}"
 
       - name: Verify image signature
         run: |
+          set -euo pipefail
           cosign verify \
             --certificate-identity \
               "https://github.com/${{ github.repository }}/.github/workflows/main.yml@refs/heads/main" \
@@ -173,13 +201,14 @@ jobs:
           image-ref: ${{ steps.image-digest.outputs.image_ref }}
           format: cyclonedx
           output: sbom.cdx.json
+
       - name: Attach signed SBOM to the image
         uses: actions/attest@v4
         with:
           subject-name: ${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.image-digest.outputs.digest }}
           sbom-path: sbom.cdx.json
-          push-to-registry: true    
+          push-to-registry: true
 
   deploy:
     name: Verify and deploy to Kubernetes
@@ -198,11 +227,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Confirm image ref was received from previous job
+        run: |
+          set -euo pipefail
+          IMAGE_REF="${{ needs.build-scan-sign.outputs.image_ref }}"
+          if [[ -z "${IMAGE_REF}" || "${IMAGE_REF}" != *"@sha256:"* ]]; then
+            echo "::error::image_ref output from build-scan-sign job is missing or malformed: '${IMAGE_REF}'"
+            exit 1
+          fi
+          echo "Deploying image_ref=${IMAGE_REF}"
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
       - name: Verify signature immediately before deployment
         run: |
+          set -euo pipefail
           cosign verify \
             --certificate-identity \
               "https://github.com/${{ github.repository }}/.github/workflows/main.yml@refs/heads/main" \
