@@ -126,34 +126,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build image locally
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64
-          load: true
-          push: false
-          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
-
-      - name: Scan built Docker image
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-
-      # Push via build-push-action instead of `docker push` so the digest
-      # comes back as a trustworthy step output (steps.push.outputs.digest)
-      # rather than being re-parsed from `docker inspect` text, which was
-      # producing an empty/invalid value and breaking `cosign verify`.
-      - name: Push approved image
-        id: push
+      # Single build + push. We do NOT build a second time later — every
+      # earlier version of this workflow that built the image twice (once
+      # locally to scan, once again to push) risked the second build
+      # producing a different/empty digest. One build, one digest, used
+      # everywhere downstream.
+      - name: Build and push image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           push: true
+          provenance: false
           tags: |
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ env.IMAGE_NAME }}:latest
@@ -163,10 +148,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          DIGEST="${{ steps.push.outputs.digest }}"
+          DIGEST="${{ steps.build.outputs.digest }}"
+          echo "Raw digest output from build step: '${DIGEST}'"
 
           if [[ -z "${DIGEST}" || "${DIGEST}" != sha256:* ]]; then
-            echo "::error::Failed to resolve a valid image digest from the push step. Got: '${DIGEST}'"
+            echo "::error::build-push-action returned an empty or malformed digest ('${DIGEST}'). Check the 'Build and push image' step log above for push failures."
             exit 1
           fi
 
@@ -176,6 +162,16 @@ jobs:
           echo "image_ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
 
           echo "Resolved image_ref=${IMAGE_REF}"
+
+      # Scan the actual pushed artifact (by digest) rather than a local
+      # tag, so what's scanned is guaranteed to be what gets signed.
+      - name: Scan pushed Docker image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.image-digest.outputs.image_ref }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
@@ -209,6 +205,11 @@ jobs:
           subject-digest: ${{ steps.image-digest.outputs.digest }}
           sbom-path: sbom.cdx.json
           push-to-registry: true
+
+      - name: Confirm outputs being handed to deploy job
+        run: |
+          echo "job output image_ref -> ${{ steps.image-digest.outputs.image_ref }}"
+          echo "job output digest    -> ${{ steps.image-digest.outputs.digest }}"
 
   deploy:
     name: Verify and deploy to Kubernetes
@@ -284,3 +285,4 @@ jobs:
             kubectl rollout status deployment/profile \
               -n production \
               --timeout=120s
+
